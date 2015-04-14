@@ -1,0 +1,105 @@
+#!/bin/bash
+# Last modified by: ah
+# On: January 12, 2015
+
+LOGIN=$(whoami)
+SCHEDDIR=/admin/consult/data/sched/sunlab
+WEEKSCHED=/admin/consult/data/sched/sunlab/sched.week # Data for a given week will actually be named WEEKSCHED.<week #>
+META=$SCHEDDIR/sched.meta # Metadata related to the schedule
+STARTDATE="01/19/2015"
+
+#cat $META | read startdate numweeks extendhoursstart header
+
+echo ""
+echo "**Be sure to double check with the official schedule**"
+echo ""
+
+for currweek in `seq 1 15`; 
+do
+
+	cat $WEEKSCHED.$currweek | while read shiftkey username
+	do
+		if [[ $shiftkey == 'p1' && $username == $LOGIN ]]
+		then
+			echo "`date -d \"$STARTDATE + $currweek weeks + 0 days\" +\"%A, %B %d, %Y\"` (night) -- 12:00 - 1:00 AM"
+		fi
+
+		if [[ $shiftkey == 'q1' && $username == $LOGIN ]]
+		then
+			echo "`date -d \"$STARTDATE + $currweek weeks + 0 days\" +\"%A, %B %d, %Y\"` (night) -- 1:00 - 2:00 AM"
+			echo ""
+		fi
+
+		if [[ $shiftkey == 'p2' && $username == $LOGIN ]]
+		then
+			echo "`date -d \"$STARTDATE + $currweek weeks + 1 days\" +\"%A, %B %d, %Y\"` (night) -- 12:00 - 1:00 AM"
+		fi
+
+		if [[ $shiftkey == 'q2' && $username == $LOGIN ]]
+		then
+			echo "`date -d \"$STARTDATE + $currweek weeks + 1 days\" +\"%A, %B %d, %Y\"` (night) -- 1:00 - 2:00 AM"
+			echo ""
+		fi
+
+		if [[ $shiftkey == 'p3' && $username == $LOGIN ]]
+		then
+			echo "`date -d \"$STARTDATE + $currweek weeks + 2 days\" +\"%A, %B %d, %Y\"` (night) -- 12:00 - 1:00 AM"
+		fi
+
+		if [[ $shiftkey == 'q3' && $username == $LOGIN ]]
+		then
+			echo "`date -d \"$STARTDATE + $currweek weeks + 2 days\" +\"%A, %B %d, %Y\"` (night) -- 1:00 - 2:00 AM"
+			echo ""
+		fi
+
+		if [[ $shiftkey == 'p4' && $username == $LOGIN ]]
+		then
+			echo "`date -d \"$STARTDATE + $currweek weeks + 3 days\" +\"%A, %B %d, %Y\"` (night) -- 12:00 - 1:00 AM"
+		fi
+
+		if [[ $shiftkey == 'q4' && $username == $LOGIN ]]
+		then
+			echo "`date -d \"$STARTDATE + $currweek weeks + 3 days\" +\"%A, %B %d, %Y\"` (night) -- 1:00 - 2:00 AM"
+			echo ""
+		fi
+
+		if [[ $shiftkey == 'l5' && $username == $LOGIN ]]
+		then
+			echo "`date -d \"$STARTDATE + $currweek weeks + 4 days\" +\"%A, %B %d, %Y\"` -- 8:00 - 9:00 PM"
+		fi
+
+		if [[ $shiftkey == 'm5' && $username == $LOGIN ]]
+		then
+			echo "`date -d \"$STARTDATE + $currweek weeks + 4 days\" +\"%A, %B %d, %Y\"` -- 9:00 - 10:00 PM"
+			echo ""
+		fi
+
+		if [[ $shiftkey == 'l6' && $username == $LOGIN ]]
+		then
+			echo "`date -d \"$STARTDATE + $currweek weeks + 5 days\" +\"%A, %B %d, %Y\"` -- 8:00 - 9:00 PM"
+		fi
+
+		if [[ $shiftkey == 'm6' && $username == $LOGIN ]]
+		then
+			echo "`date -d \"$STARTDATE + $currweek weeks + 5 days\" +\"%A, %B %d, %Y\"` -- 9:00 - 10:00 PM"
+			echo ""
+		fi
+
+		if [[ $shiftkey == 'p7' && $username == $LOGIN ]]
+		then
+			echo "`date -d \"$STARTDATE + $currweek weeks + 6 days\" +\"%A, %B %d, %Y\"` (night) -- 12:00 - 1:00 AM"
+		fi
+
+		if [[ $shiftkey == 'q7' && $username == $LOGIN ]]
+		then
+			echo "`date -d \"$STARTDATE + $currweek weeks + 6 days\" +\"%A, %B %d, %Y\"` (night) -- 1:00 - 2:00 AM"
+			echo ""
+		fi
+		sched[$shiftkey]=$username
+	done
+
+done    
+
+echo ""
+echo "**Note: Traded-away or traded-for var shifts will NOT be shown as updated here**"
+

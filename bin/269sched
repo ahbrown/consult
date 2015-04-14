@@ -1,0 +1,335 @@
+#!/bin/ksh
+
+# Last modified by: ah
+# On: November 2, 2014
+
+SCHEDDIR=/admin/consult/data/sched/269_lab
+PERMSCHED=$SCHEDDIR/sched # The permanent schedule
+META=$SCHEDDIR/sched.meta # Metadata related to the schedule
+WEEKSCHED=$SCHEDDIR/sched.week # Data particular to a given week (actual file will be named WEEKSCHED.<week #>)
+CONSULTNICKS=$SCHEDDIR/sched.consultnicks # Consultant short alias table
+SHIFTTIMES=$SCHEDDIR/sched.shifttimes # Times when shifts occur
+
+if [[ -z "$USER" ]]; then
+    USER=$(whoami)
+fi
+
+NL=$'\n'
+
+# consultnicks: jcarberr => jc
+# shifttimes:   4q       => 21 Feb 2010 Thu 09:00-10:30
+# sched:        5g       => jcarberr
+# requestors:   6e       => jcarberr
+typeset -A consultnicks shifttimes sched requestors
+
+integer curweek # number of weeks since starting date of schedule (in sched.meta)
+                # Note that starting date MUST be a Monday or things will
+				# blow up horribly.
+integer curdayofweek # [1 .. 7] = [Mon .. Sun]
+
+umask 007
+
+USAGE="Usage: csched [flags]
+  -h,--help     Display this message
+  -w #,--week=# Choose week for schedule / subs; # may be relative (ex: '-w +2')
+  -r,--reqsub   Request a sub
+  -s,--sub      Display subs and take a sub
+  -p,--perm     Display only the permanent schedule (no subs)"
+
+# Reads in sched from the given file and updates sched accordingly
+# $1: file to read from
+# $2 (optional): dictionary to fill out for sub requestors
+function getsched {
+	if [[ -z "$1" ]]
+	then
+		print -u2 "too few arguments to getsched"
+		exit 1
+	fi
+	cat $1 | while read shiftkey username requestor
+	do
+		if [[ -n "$2" && $username == 'FREE' ]]
+		then
+			eval $2[$shiftkey]=$requestor
+		fi
+		sched[$shiftkey]=$username
+	done
+}
+
+# Prompts to select among a user's shifts and returns an
+# array of the keys for those shifts
+# $1: user to get shifts for
+# $2 name of array to return shifts in (return arg)
+function selectshifts {
+	if [[ -z "$1" || -z "$2" ]]
+	then
+		print -u2 "too few arguments to selectshifts"
+		exit 1
+	fi
+	i=0
+	
+	# Get user's shifts
+	typeset -a shifts
+	for s in "${!sched[@]}"
+	do
+		if [[ ${sched[$s]} == $1 ]]
+		then
+			shifts[$i]=$s
+			i=$(($i+1))
+		fi
+	done
+
+	if [[ -z "${shifts[@]}" ]]
+	then
+		print "\nThere don't appear to be any shifts to choose from.\n\n"
+		return
+	fi
+	
+	print "\nSelect shift(s) (separated by spaces):\n"
+
+	i=0
+	# Print one prompt string for each shift
+	while (( $i < ${#shifts[@]} ))
+	do
+		print "$i: ${shifttimes[${shifts[$i]}]}"
+		i=$(($i + 1))
+	done
+	print "\nPress enter to cancel"
+	read -A choices
+	# Convert read-in numbers back to shift keys
+	if [[ -z "${choices[@]}" ]]
+	then
+		print "\nNo choice made.\n"
+		return
+	fi
+	i=0
+	while (( $i < ${#choices[@]} ))
+	do
+		eval $2[$i]=${shifts[${choices[$i]}]}
+		i=$(($i + 1))
+	done
+	print "Choices made, sending email..."
+	sleep 1
+}
+	
+
+
+# Read in metadata and find current week
+cat $META | read startdate numweeks extendhoursstart header
+
+curweek=$(( ($(date +%s) - $(date -d "$startdate" +%s)) / (3600*24*7)))
+curdayofweek=$(( ($(date +%w) + 6) % 7 + 1)) # [1 .. 7] = [Mon .. Sun]
+realcurweek=$curweek
+
+# Process command-line args
+choice='None'
+perm=
+while getopts ":h(help)s(sub)r(reqsub)w:(week)p(perm)" opt
+do
+	case $opt in
+		h)
+			print -u2 "$USAGE"
+			exit
+		;;
+		p)
+			perm=1
+		;;
+		w)
+			# Identify relative dates vs. absolute
+			modifier=${OPTARG:0:1}
+			if [ $modifier = "+" ]; then
+				curweek=$curweek+${OPTARG:1}
+			elif [ $modifier = "-" ]; then
+				curweek=$curweek-${OPTARG:1}
+			else
+				curweek=$OPTARG
+			fi
+		;;
+		s)
+			choice='Take'
+		;;
+		r)
+			choice='Request'
+		;;
+		*)
+			print -u2 "$USAGE"
+			exit 2
+		;;
+	esac
+done
+
+if (( $curweek >= $numweeks ))
+then
+	print "Schedule expired. Go yell at the head consultant."
+	exit 1
+fi
+
+# Get the consultant nicknames
+consultnicks[$USER]=$USER # reasonable default
+cat $CONSULTNICKS | while read nick consult
+do
+	consultnicks[$consult]=$nick
+done
+
+# Get the shift times and add dates
+cat $SHIFTTIMES | while read s time
+do
+	integer dayofweek
+	dayofweek=${s:1}
+	# Shift current date by appropriate number of days
+	absdate=$(( $(date +%s) + ($dayofweek - $curdayofweek)* 3600*24 + ($curweek - $realcurweek) * 3600*24*7))
+	shifttimes[$s]="$(date -d @$absdate +%D) $time"
+done
+
+# Get the permanent schedule and the schedule for this week
+getsched $PERMSCHED
+if [[ -f $WEEKSCHED.$curweek && -z $perm ]]
+then
+	getsched $WEEKSCHED.$curweek requestors
+fi
+
+# Perform sub actions
+case $choice in
+	'Take')
+		typeset -a taken
+		# Find all shifts belonging to the 'FREE' user
+		selectshifts 'FREE' taken
+		# Take those shifts, email requesting users
+		for s in "${taken[@]}"
+		do
+			sched[$s]=$USER
+			print $s $USER >> $WEEKSCHED.$curweek
+			mail -s "[sub] 269 Sub taken" ${requestors[$s]} <<-EOF
+				Your sub request for the shift
+
+				${shifttimes[$s]}
+
+				has been taken by $USER
+
+				Love,
+				  The 269sched/269sub bot
+			EOF
+		done
+	;;
+	'Request')
+		typeset -a requested
+		requesttimes=
+		selectshifts $USER requested
+		for s in "${requested[@]}"
+		do
+			sched[$s]='FREE'
+			print $s 'FREE' $USER >> $WEEKSCHED.$curweek
+			requesttimes="$requesttimes$NL${shifttimes[$s]}"
+		done
+		# If at least one request was made, email the consultants
+		if [[ -n "${requested[@]}" ]]
+		then
+			mail -s "[sub] 269 sub available!!" consultants <<-EOF
+				The shifts
+				$requesttimes
+
+				have been added!
+
+				Love,
+				  The 269sched/269sub bot
+			EOF
+		fi
+	;;
+esac
+
+
+# Highlight the current shift
+integer curday curhour
+curday=$( date +%w )  # [0 .. 6] = [Sun .. Sat]
+curhour=$( date +%k ) # [0 .. 23]
+if [[ $curhour -lt 6 ]]; then
+    curhour=$(( $curhour + 24 ))  # now we're [6 .. 29]
+    curday=$(( ($curday - 1) % 7 ))
+fi
+curday=$(( ($curday + 6) % 7 + 1 )) # [1 .. 7] = [Mon .. Sun]
+case "$curhour" in
+     6) curhour_str=v ;;
+     7) curhour_str=w ;;
+     8) curhour_str=x ;;
+     9) curhour_str=a ;;
+    10) curhour_str=b ;;
+    11) curhour_str=c ;;
+    12) curhour_str=d ;;
+    13) curhour_str=e ;;
+    14) curhour_str=f ;;
+    15) curhour_str=g ;;
+    16) curhour_str=h ;;
+    17) curhour_str=i ;;
+    18) curhour_str=j ;;
+    19) curhour_str=k ;;
+    20) curhour_str=l ;;
+    21) curhour_str=m ;;
+    22) curhour_str=n ;;
+    23) curhour_str=o ;;
+    24) curhour_str=p ;;
+    25) curhour_str=q ;;
+    26) curhour_str=r ;;
+    27) curhour_str=s ;;
+    28) curhour_str=t ;;
+    29) curhour_str=u ;;
+esac
+curshift=$curhour_str$curday
+# Initialize the short variable names (hacky...)
+for i in "${!sched[@]}"
+do
+	# If shift was taken from sub, print in uppercase
+	if [[ -n "${requestors[$i]}" ]]
+	then
+		typeset -u t
+	else
+		typeset -l t
+	fi
+	# Highlighting us and the current shift
+	if [[ $i == $curshift ]]; then
+	    gunk1=$'\x1B[1;32m'
+	    gunk2=$'\x1B[0m'
+	elif [[ ${consultnicks[${sched[$i]}]} == ${consultnicks[$USER]} ]]
+	then
+	    gunk1=$'\x1B[1;31m'
+	    gunk2=$'\x1B[0m'
+	else
+	    gunk1=""
+	    gunk2=""
+	fi
+	# Actually set it
+	eval t=${consultnicks[${sched[$i]}]}
+	eval $i=$t
+	if ( tty --quiet </dev/stdout ) 2>/dev/null ; then
+	    eval $i='"$gunk1"$'$i'"$gunk2"'
+	fi
+done
+# When this week starts and ends
+absweekstart=$(( $(date +%s) + (1 - $curdayofweek)*3600*24 + ($curweek - $realcurweek)*3600*24*7))
+absweekend=$(( $(date +%s) + (7 - $curdayofweek)*3600*24 + ($curweek - $realcurweek)*3600*24*7))
+weekstart=$(date -d @$absweekstart +%D)
+weekend=$(date -d @$absweekend +%D)
+
+cat <<-EOF
+              $header
+                     Week $curweek: $weekstart - $weekend
+ Time             Mon     Tue     Wed     Thu     Fri     Sat     Sun     
+ ========================================================================
+ 09:00 - 10:00    $a1      $a2      $a3      $a4      $a5      xx      xx 
+ 10:00 - 11:00    $b1      $a2/$b2   $b3      $a4/$b4   $b5      xx      xx 
+ 11:00 - 12:00    $c1      $b2      $c3      $b4      $c5      xx      xx 
+ 12:00 - 13:00    $d1      $d2      $d3      $d4      $d5      $d6      $d7
+ 13:00 - 14:00    $e1      $e2      $e3      $e4      $e5      $e6      $e7
+ 14:00 - 15:00    $f1      $e2/$f2   $f3      $e4/$f4   $f5      $f6      $f7
+ 15:00 - 16:00    $g1      $f2      $g3      $f4      $g5      $g6      $g7
+ 16:00 - 17:00    $h1      $h2      $h3      $h4      $h5      $h6      $h7
+ 17:00 - 18:00    $i1      $i2      $i3      $i4      $i5      $i6      $i7
+ 18:00 - 19:00    $j1      $j2      $j3      $j4      $j5      $j6      $j7
+ 19:00 - 20:00    $k1      $k2      $k3      $k4      $k5      $k6      $k7
+ 20:00 - 21:00    $l1      $l2      $l3      $l4      $l5      $l6      $l7
+ 21:00 - 22:00    $m1      $m2      $m3      $m4      $m5      $m6      $m7
+ 22:00 - 23:00    $n1      $n2      $n3      $n4      xx      xx      $n7
+ 23:00 - 24:00    $o1      $o2      $o3      $o4      xx      xx      $o7
+ 24:00 - 25:00    $p1      $p2      $p3      $p4      xx      xx      $p7
+ 25:00 - 26:00    $q1      $q2      $q3      $q4      xx      xx      $q7
+EOF
+
+cat $CONSULTNICKS | sed -e 's/ /: /' | column -c 80

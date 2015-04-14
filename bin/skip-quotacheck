@@ -1,0 +1,17 @@
+#!/bin/bash
+# Last modified by: ah
+# On: October 12, 2014
+if [[ $1 ]]
+then
+	user=$1
+	echo "suspending quota checking for user $user..."
+	echo "please have $user type their kerberos password"
+	if su $user -c "echo \"if [[ -f /home/$user/.gpfs_quota_usage ]]; then rm /home/$user/.gpfs_quota_usage 2> /dev/null; else echo 'check is already skipped'; fi \" | /bin/bash"
+	then
+		echo "quota check temporarily suspended.  Quota check will be re-enabled every 15 minutes on the quarter-hour"
+	else
+		echo "attempt failed.  Perhaps a mistyped password?  Please try again."
+	fi
+else
+	echo "USAGE: $0 username"
+fi

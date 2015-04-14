@@ -1,0 +1,62 @@
+#!/bin/sh
+#
+# Last modified by: ah
+# on: January 27, 2015
+# 
+# Simple script to email users when they leave nodes unlocked
+
+# **Note to new Head Consultants: The only fields you should
+# have to modify are HEADCONSULTANT_NAME
+
+# CONSULTANT --> the consultant who ran the script
+CONSULTANT=`/usr/bin/whoami`
+
+HEADCONSULTANT_NAME=`/admin/consult/bin/current-head-consultant`
+
+HEADCONSULTANT_EMAIL=head-consultant
+
+mail=/usr/bin/mail
+
+if [ $# -ne 1 ] ; then
+    echo "usage: snow-warning [--custom-mail] <username>"
+    exit 1 ;
+fi
+
+#get info about the warning
+umask 007
+user=$1
+
+date=`/bin/date +%a,\ %b\ %d,\ %Y,\ %-I:%M\ %p`
+full_name=`/admin/consult/bin/cslogin_to_name $user`
+
+if [ -n "$full_name" ] ; then
+    echo "User's full name: $full_name"
+fi
+
+# Warning msg
+/usr/sbin/sendmail -t -i <<-EOF
+	From: Frosty The Snowman <snowman@cs.brown.edu>
+	To: $full_name <$user@cs.brown.edu>
+	Subject: Snow Warning
+
+	Hello,
+
+	Please Note: This message was automatically generated because you
+	were caught throwing snow by the Sunlab consultant '$CONSULTANT'.
+
+	You should not throw snow, as there are unscrupulous users who
+	will promptly throw snow right back at you.
+
+	Furthermore, under department policy you are responsible for
+	not having fun in the labs! By throwing snow, you are in clear
+	violation of this rule, and must cease having fun upon reception
+	of this e-mail.
+
+	Thank you,
+
+	Frosty the Snowman
+	Snow Daemon
+	Department of Computer Science
+	Brown University
+	(on behalf of the consulting program)
+EOF

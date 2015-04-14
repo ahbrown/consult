@@ -1,0 +1,4 @@
+#!/bin/bash
+# Last modified by: ah
+# On: September 07, 2014
+for machine in $(netgroup sunlab); do ssh $machine 'for name in $(w | cut -f 1 -d " " | tail -n +3 | sort -u); do zwrite $name -m "The sunlab is closing now, please save your work and exit as soon as possible."; done' 1> /dev/null 2> /dev/null & done

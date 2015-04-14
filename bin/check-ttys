@@ -1,0 +1,13 @@
+#!/bin/bash
+# Last modified by: ah
+# On: March 23, 2015
+red='\e[0;31m'
+echo -e "Checking computers for tty sessions..."
+a=`netgroup sunlab`
+b=`netgroup ugrad | grep mslab..-l`
+
+for host in $a $b; do 
+	ssh $host 'red="\e[0;31m"; white="\e[0;37m" a=`w|grep tty[0-9]`; if [[ ! -z $a ]]; then echo -e "${red}"; hostname; echo -e "${white}"; echo $a; fi' 2>/dev/null & 
+done
+
+wait
